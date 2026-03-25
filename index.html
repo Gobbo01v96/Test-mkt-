@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Comercial - Sinta Iandê</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .urgencia-5 { border-left: 8px solid #ff4f4f; }
+        .card { transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="bg-slate-900 text-white p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center mb-10 border-b border-slate-700 pb-5">
+            <h1 class="text-3xl font-bold">Leads em Tempo Real 🔥</h1>
+            <div id="status" class="text-green-400 flex items-center gap-2">
+                <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
+                Conectado ao Firebase
+            </div>
+        </header>
+
+        <div id="grid-leads" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            </div>
+    </div>
+
+    <script>
+        const FIREBASE_URL = "https://dados-rd-default-rtdb.firebaseio.com/"; // <-- COLE SUA URL DO FIREBASE AQUI
+
+        async function fetchLeads() {
+            try {
+                const response = await fetch(`${FIREBASE_URL}leads.json`);
+                const data = await response.json();
+                const grid = document.getElementById('grid-leads');
+                grid.innerHTML = '';
+
+                if (!data) {
+                    grid.innerHTML = '<p class="text-slate-500">Aguardando novos leads...</p>';
+                    return;
+                }
+
+                Object.keys(data).reverse().forEach(id => {
+                    const lead = data[id];
+                    if (lead.done) return;
+
+                    const card = `
+                        <div class="card bg-slate-800 p-6 rounded-xl shadow-lg ${lead.urgencia.classe}">
+                            <div class="flex justify-between items-start mb-4">
+                                <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-slate-700 rounded">${lead.interesse}</span>
+                                <span class="text-lg">${lead.urgencia.label}</span>
+                            </div>
+                            <h2 class="text-xl font-bold mb-1">${lead.nome}</h2>
+                            <p class="text-slate-400 mb-4 font-medium">${lead.empresa}</p>
+                            <div class="flex items-center gap-3 mt-4">
+                                <a href="https://wa.me/${lead.telefone.replace(/\D/g,'')}" target="_blank" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex-1 text-center transition">
+                                    WhatsApp
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                    grid.innerHTML += card;
+                });
+            } catch (e) {
+                console.error("Erro ao puxar dados:", e);
+            }
+        }
+
+        // Atualiza a cada 5 segundos
+        setInterval(fetchLeads, 5000);
+        fetchLeads();
+    </script>
+</body>
+</html>
