@@ -2,71 +2,173 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Comercial - Sinta Iandê</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Sinta Iandê - Leads em Tempo Real 🔥</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .urgencia-5 { border-left: 8px solid #ff4f4f; }
-        .card { transition: all 0.3s ease; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        body { background-color: #0f172a; color: white; }
+        .urgencia-5 { border-left: 10px solid #ff4f4f; border-radius: 12px; }
+        .card { transition: all 0.3s ease; opacity: 0; transform: translateY(20px); animation: fadeInUp 0.5s forwards; }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        
+        /* Efeito de Notificação para Leads Novos */
+        .lead-novo { animation: pulseNewLead 2s infinite; }
+        @keyframes pulseNewLead { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
     </style>
 </head>
-<body class="bg-slate-900 text-white p-8">
-    <div class="max-w-6xl mx-auto">
-        <header class="flex justify-between items-center mb-10 border-b border-slate-700 pb-5">
-            <h1 class="text-3xl font-bold">Leads em Tempo Real 🔥</h1>
-            <div id="status" class="text-green-400 flex items-center gap-2">
-                <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
-                Conectado ao Firebase
+<body class="p-6 md:p-10">
+    <div class="max-w-7xl mx-auto">
+        
+        <header class="flex flex-col md:flex-row justify-between items-center mb-12 border-b border-slate-700 pb-6 gap-4">
+            <div class="flex items-center gap-3">
+                <img src="https://sintaiande.com.br/wp-content/uploads/2023/10/logo-sinta-iande-branco.png" alt="Sinta Iandê" class="h-10">
+                <h1 class="text-3xl font-extrabold tracking-tight">Painel de Leads</h1>
+            </div>
+            <div id="status" class="text-green-400 flex items-center gap-2.5 font-medium px-4 py-2 bg-green-950 rounded-full border border-green-800">
+                <span class="relative flex h-3.5 w-3.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500"></span></span>
+                Conectado e Escutando
             </div>
         </header>
 
-        <div id="grid-leads" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div id="grid-leads" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             </div>
+        
+        <div id="no-leads" class="hidden text-center py-20 text-slate-500">
+            <p class="text-2xl font-medium">✅ Nenhum lead pendente.</p>
+            <p>Ótimo trabalho! Aguardando novas oportunidades.</p>
+        </div>
     </div>
 
+    <audio id="som-notificacao" src="https://cdn.pixabay.com/audio/2022/03/15/audio_13344b7a1e.mp3" preload="auto"></audio>
+
     <script>
+        // --- CONFIGURAÇÃO ---
         const FIREBASE_URL = "https://dados-rd-default-rtdb.firebaseio.com/"; // <-- COLE SUA URL DO FIREBASE AQUI
+        // --------------------
+
+        let leadsAtuais = []; // Guarda os IDs dos leads para saber se chegou um novo
+        let somHabilitado = false; // Bloqueado até o usuário clicar na tela
+
+        // Ativa o som após o primeiro clique (exigência dos navegadores)
+        document.body.addEventListener('click', () => { somHabilitado = true; }, { once: true });
+
+        // Função para calcular tempo decorrido
+        function calcularTempo(timestamp) {
+            if (!timestamp) return '<span class="text-slate-500">Tempo indefinido</span>';
+            const entrada = new Date(timestamp);
+            const agora = new Date();
+            const diff = Math.floor((agora - entrada) / 1000); // segundos
+            const min = Math.floor(diff / 60);
+            if (min > 30) return `<span class="text-red-500 font-bold">Atrasado: ${min}min</span>`;
+            if (min < 1) return `<span class="text-green-400 font-mono">Há segundos</span>`;
+            return `<span class="text-green-400 font-mono">Há ${min}m ${diff % 60}s</span>`;
+        }
+
+        // Função para marcar lead como 'Contato Feito' (some da tela)
+        async function marcarComoFeito(leadId) {
+            try {
+                // Remove o card visualmente primeiro (efeito instantâneo)
+                const card = document.getElementById(`card-${leadId}`);
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.8)';
+                
+                // Atualiza o Firebase (done: true)
+                await fetch(`${FIREBASE_URL}leads/${leadId}.json`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ done: true })
+                });
+                
+                // Recarrega os leads para garantir sincronia
+                setTimeout(fetchLeads, 300);
+            } catch (e) { console.error("Erro ao dar baixa:", e); }
+        }
 
         async function fetchLeads() {
             try {
                 const response = await fetch(`${FIREBASE_URL}leads.json`);
                 const data = await response.json();
                 const grid = document.getElementById('grid-leads');
-                grid.innerHTML = '';
+                const noLeadsMsg = document.getElementById('no-leads');
+                const som = document.getElementById('som-notificacao');
 
-                if (!data) {
-                    grid.innerHTML = '<p class="text-slate-500">Aguardando novos leads...</p>';
-                    return;
+                if (!data) { grid.innerHTML = ''; noLeadsMsg.classList.remove('hidden'); return; }
+                noLeadsMsg.classList.add('hidden');
+
+                const idsFirebase = Object.keys(data);
+                const idsAtivos = idsFirebase.filter(id => !data[id].done);
+
+                // --- LÓGICA DE NOTIFICAÇÃO (SOM E PISCAR) ---
+                if (leadsAtuais.length > 0) { // Não toca na primeira carga
+                    const novosIds = idsAtivos.filter(id => !leadsAtuais.includes(id));
+                    if (novosIds.length > 0) {
+                        if (somHabilitado) { som.play(); } // Toca o som "Plim"
+                        // Adiciona a classe de piscar azul temporariamente nos novos cards
+                        novosIds.forEach(id => {
+                            setTimeout(() => {
+                                const cardEl = document.getElementById(`card-${id}`);
+                                if (cardEl) cardEl.classList.add('lead-novo');
+                                setTimeout(() => { if (cardEl) cardEl.classList.remove('lead-novo'); }, 10000); // Para de piscar após 10s
+                            }, 500); 
+                        });
+                    }
                 }
+                leadsAtuais = idsAtivos; // Atualiza a lista de controle
+                // ---------------------------------------------
 
-                Object.keys(data).reverse().forEach(id => {
+                grid.innerHTML = ''; // Limpa a tela para renderizar os cards
+
+                // Renderiza os leads ativos (reverso para o mais novo ficar no topo)
+                idsAtivos.reverse().forEach(id => {
                     const lead = data[id];
-                    if (lead.done) return;
-
+                    
+                    // Formata telefone para link do RD Conversas
+                    const telPuro = lead.telefone ? lead.telefone.replace(/\D/g,'') : '';
+                    
                     const card = `
-                        <div class="card bg-slate-800 p-6 rounded-xl shadow-lg ${lead.urgencia.classe}">
-                            <div class="flex justify-between items-start mb-4">
-                                <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-slate-700 rounded">${lead.interesse}</span>
-                                <span class="text-lg">${lead.urgencia.label}</span>
+                        <div id="card-${id}" class="card bg-slate-800 p-7 rounded-2xl shadow-xl ${lead.urgencia.classe} border border-slate-700">
+                            <div class="flex justify-between items-start mb-5">
+                                <span class="text-xs font-bold uppercase tracking-wider px-3 py-1.5 bg-slate-900 rounded-full border border-slate-700">${lead.interesse}</span>
+                                <div class="text-right">
+                                    <span class="text-lg block">${lead.urgencia.label}</span>
+                                    <div class="text-sm tempo-decorrido" data-timestamp="${lead.timestamp}">${calcularTempo(lead.timestamp)}</div>
+                                </div>
                             </div>
-                            <h2 class="text-xl font-bold mb-1">${lead.nome}</h2>
-                            <p class="text-slate-400 mb-4 font-medium">${lead.empresa}</p>
-                            <div class="flex items-center gap-3 mt-4">
-                                <a href="https://wa.me/${lead.telefone.replace(/\D/g,'')}" target="_blank" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex-1 text-center transition">
-                                    WhatsApp
+                            
+                            <h2 class="text-2xl font-extrabold mb-1.5">${lead.nome || 'Lead sem Nome'}</h2>
+                            <p class="text-slate-400 mb-6 font-medium text-lg">${lead.empresa || 'Empresa não informada'}</p>
+                            
+                            <div class="flex flex-col sm:flex-row items-stretch gap-4 mt-6 border-t border-slate-700 pt-6">
+                                <a href="https://app.tallos.com.br/#/app/chat/phone/${telPuro}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold text-center transition flex-1 text-lg flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                                    Atender no RD
+                                </a>
+                                <button onclick="marcarComoFeito('${id}')" class="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded-xl font-bold text-center transition flex-1 text-lg flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    Contato Feito
                                 </a>
                             </div>
                         </div>
                     `;
                     grid.innerHTML += card;
                 });
-            } catch (e) {
-                console.error("Erro ao puxar dados:", e);
-            }
+            } catch (e) { console.error("Erro ao puxar dados:", e); }
         }
 
-        // Atualiza a cada 5 segundos
+        // Função para atualizar apenas o texto do cronômetro sem piscar a tela
+        function atualizarCronometros() {
+            const cronometros = document.querySelectorAll('.tempo-decorrido');
+            cronometros.forEach(el => {
+                const ts = el.getAttribute('data-timestamp');
+                if (ts) { el.innerHTML = calcularTempo(ts); }
+            });
+        }
+
+        // Atualiza a lista completa a cada 5 segundos
         setInterval(fetchLeads, 5000);
+        // Atualiza o texto do cronômetro a cada 1 segundo (pra precisão)
+        setInterval(atualizarCronometros, 1000);
+        
+        // Carga inicial
         fetchLeads();
     </script>
 </body>
