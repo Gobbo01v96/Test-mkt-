@@ -56,3 +56,88 @@
         function formatarTempo(timestamp) {
             const diff = Math.floor((new Date() - new Date(timestamp)) / 1000);
             const min = Math.floor(diff / 60);
+            if (min >= 20) return `<span class="text-red-500 font-black">CRÍTICO: ${min}m</span>`;
+            if (min >= 10) return `<span class="text-orange-400 font-bold">ATENÇÃO: ${min}m</span>`;
+            return `<span class="text-green-400 font-mono">${min}m ${diff % 60}s</span>`;
+        }
+
+        async function darBaixa(id, nome) {
+            if (!confirm(`Confirmar que o contato com ${nome} foi realizado?`)) return;
+            const el = document.getElementById(`card-${id}`);
+            el.style.opacity = '0';
+            el.style.transform = 'scale(0.9)';
+            await fetch(`${FIREBASE_URL}leads/${id}.json`, { 
+                method: 'PATCH', 
+                body: JSON.stringify({ done: true }) 
+            });
+            setTimeout(fetchLeads, 400);
+        }
+
+        async function fetchLeads() {
+            try {
+                const res = await fetch(`${FIREBASE_URL}leads.json`);
+                const data = await res.json();
+                const grid = document.getElementById('grid-leads');
+                const noLeads = document.getElementById('no-leads');
+                
+                if (!data) { grid.innerHTML = ''; noLeads.classList.remove('hidden'); return; }
+                
+                const ativos = Object.keys(data).filter(id => !data[id].done);
+                if (ativos.length === 0) { grid.innerHTML = ''; noLeads.classList.remove('hidden'); return; }
+                noLeads.classList.add('hidden');
+
+                // Lógica de notificação para novos leads
+                if (leadsAtuais.length > 0) {
+                    const novos = ativos.filter(id => !leadsAtuais.includes(id));
+                    novos.forEach(id => {
+                        setTimeout(() => { document.getElementById(`card-${id}`)?.classList.add('lead-novo'); }, 500);
+                    });
+                }
+                leadsAtuais = ativos;
+                grid.innerHTML = '';
+
+                ativos.reverse().forEach(id => {
+                    const l = data[id];
+                    const tel = l.telefone ? l.telefone.replace(/\D/g,'') : '';
+                    
+                    grid.innerHTML += `
+                        <div id="card-${id}" class="card bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-700 ${l.urgencia?.classe || 'urgencia-1'}">
+                            <div class="flex justify-between items-start mb-6">
+                                <span class="text-[10px] font-black uppercase bg-slate-900 px-3 py-1 rounded-md border border-slate-700 tracking-widest text-slate-300">
+                                    ${l.interesse || 'EVENTO'}
+                                </span>
+                                <div class="text-right">
+                                    <div class="text-sm font-bold text-white">${l.urgencia?.label || '🚨 NOVO LEAD'}</div>
+                                    <div class="text-xs cronometro" data-ts="${l.timestamp}">${formatarTempo(l.timestamp)}</div>
+                                </div>
+                            </div>
+                            <h2 class="text-xl font-black mb-1 truncate text-white">${l.nome}</h2>
+                            <p class="text-slate-400 font-semibold text-sm mb-6">${l.empresa || 'Sinta Iandê'}</p>
+                            <div class="flex gap-3 pt-4 border-t border-slate-700">
+                                <a href="https://app.tallos.com.br/#/app/chat/phone/${tel}" target="_blank" 
+                                   class="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold text-center text-xs transition uppercase tracking-tighter">
+                                   Atender
+                                </a>
+                                <button onclick="darBaixa('${id}', '${l.nome}')" 
+                                        class="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-bold text-center text-xs transition uppercase tracking-tighter text-slate-200">
+                                   Concluído
+                                </button>
+                            </div>
+                        </div>`;
+                });
+            } catch (e) { console.error("Erro ao carregar leads:", e); }
+        }
+
+        // Atualiza os cronômetros a cada segundo
+        setInterval(() => {
+            document.querySelectorAll('.cronometro').forEach(el => {
+                el.innerHTML = formatarTempo(el.getAttribute('data-ts'));
+            });
+        }, 1000);
+
+        // Atualiza a lista de leads a cada 5 segundos
+        setInterval(fetchLeads, 5000);
+        fetchLeads();
+    </script>
+</body>
+</html>
